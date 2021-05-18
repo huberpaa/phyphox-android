@@ -1318,7 +1318,7 @@ public class Experiment extends AppCompatActivity implements View.OnClickListene
 
     //The updateData runnable runs on a second thread and performs the heavy math (if defined in the
     // experiment)
-    Runnable updateData = new Runnable() {
+    Runnable updateData = new Runnable() {//todo
         @Override
         public void run() {
             //Do the analysis. All of these elements might fire exceptions,
@@ -1411,7 +1411,7 @@ public class Experiment extends AppCompatActivity implements View.OnClickListene
                     //If we are not supposed to stop, let's do it again in a short while
                     if (!shutdown) {
                         if (measuring)
-                            updateViewsHandler.postDelayed(this, 40);
+                            updateViewsHandler.postDelayed(this, 40);//todo
                         else
                             updateViewsHandler.postDelayed(this, 400); //As there is no experiment running, we can take our time and maybe save some battery
                     }

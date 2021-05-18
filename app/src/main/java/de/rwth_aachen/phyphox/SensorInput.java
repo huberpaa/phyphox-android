@@ -33,8 +33,9 @@ public class SensorInput implements SensorEventListener, Serializable {
     public DataBuffer dataAccuracy; //Data-buffer for absolute value
     transient private SensorManager sensorManager; //Hold the sensor manager
 
-    private long lastReading; //Remember the time of the last reading to fullfill the rate
+    private long lastReading, eventTime; //Remember the time of the last reading to fullfill the rate
     private double avgX, avgY, avgZ, avgAccuracy; //Used for averaging
+    private Double accuracy;
     private boolean average = false; //Avergae over aquisition period?
     private int aquisitions; //Number of aquisitions for this average
 
@@ -278,6 +279,54 @@ public class SensorInput implements SensorEventListener, Serializable {
     public void onAccuracyChanged(Sensor sensor, int accuracy) {
     }
 
+    public void writeDataIntoBuffer(){ //todo muss kontinoirlich aufgerufen werden
+        long currentTime = System.currentTimeMillis();
+        if (lastReading == 0) //init
+            lastReading = currentTime;
+        if (lastReading + period <= currentTime) {
+            //Average/waiting period is over
+            //Append the data to available buffers
+            dataLock.lock();
+            try {
+                if (dataX != null)
+                    dataX.append(avgX / aquisitions);
+                if (dataY != null)
+                    dataY.append(avgY / aquisitions);
+                if (dataZ != null)
+                    dataZ.append(avgZ / aquisitions);
+                if (dataT != null) {
+                    double t = experimentTimeReference.getExperimentTimeFromEvent(eventTime);
+                    if (t < -10 && fixDeviceTimeOffset == 0.0) {
+                        Log.w("SensorInput", "Unrealistic time offset detected. Applying adjustment of " + -t + "s.");
+                        fixDeviceTimeOffset = -t;
+                    }
+                    t += fixDeviceTimeOffset;
+                    if (t < 0.0) {
+                        Log.w("SensorInput", this.sensorName + ": Adjusted one timestamp from t = " + t + "s to t = 0s.");
+                        t = 0.0;
+                    }
+                    dataT.append(t);
+                }
+                if (dataAbs != null)
+                    if (type == Sensor.TYPE_ROTATION_VECTOR)
+                        dataAbs.append(Math.sqrt(aquisitions*aquisitions-avgX*avgX-avgY*avgY-avgZ*avgZ) / aquisitions);
+                    else
+                        dataAbs.append(Math.sqrt(avgX*avgX+avgY*avgY+avgZ*avgZ) / aquisitions);
+                if (dataAccuracy != null)
+                    dataAccuracy.append(accuracy);
+            } finally {
+                dataLock.unlock();
+            }
+            //Reset averaging
+            avgX = 0.;
+            avgY = 0.;
+            avgZ = 0.;
+            avgAccuracy = 0.;
+            lastReading = currentTime;
+            aquisitions = 0;
+        }
+    }
+
     //This is called when we receive new data from a sensor. Append it to the right buffer
     public void onSensorChanged(SensorEvent event) {
 
@@ -320,52 +369,9 @@ public class SensorInput implements SensorEventListener, Serializable {
                     if (event.values.length > 2)
                         avgZ = event.values[2];
                 }
+                eventTime = event.timestamp;
                 avgAccuracy = accuracy;
                 aquisitions = 1;
-            }
-            if (lastReading == 0)
-                lastReading = event.timestamp;
-            if (lastReading + period <= event.timestamp) {
-                //Average/waiting period is over
-                //Append the data to available buffers
-                dataLock.lock();
-                try {
-                    if (dataX != null)
-                        dataX.append(avgX / aquisitions);
-                    if (dataY != null)
-                        dataY.append(avgY / aquisitions);
-                    if (dataZ != null)
-                        dataZ.append(avgZ / aquisitions);
-                    if (dataT != null) {
-                        double t = experimentTimeReference.getExperimentTimeFromEvent(event.timestamp);
-                        if (t < -10 && fixDeviceTimeOffset == 0.0) {
-                            Log.w("SensorInput", "Unrealistic time offset detected. Applying adjustment of " + -t + "s.");
-                            fixDeviceTimeOffset = -t;
-                        }
-                        t += fixDeviceTimeOffset;
-                        if (t < 0.0) {
-                            Log.w("SensorInput", this.sensorName + ": Adjusted one timestamp from t = " + t + "s to t = 0s.");
-                            t = 0.0;
-                        }
-                        dataT.append(t);
-                    }
-                    if (dataAbs != null)
-                        if (type == Sensor.TYPE_ROTATION_VECTOR)
-                            dataAbs.append(Math.sqrt(aquisitions*aquisitions-avgX*avgX-avgY*avgY-avgZ*avgZ) / aquisitions);
-                        else
-                            dataAbs.append(Math.sqrt(avgX*avgX+avgY*avgY+avgZ*avgZ) / aquisitions);
-                    if (dataAccuracy != null)
-                        dataAccuracy.append(accuracy);
-                } finally {
-                    dataLock.unlock();
-                }
-                //Reset averaging
-                avgX = 0.;
-                avgY = 0.;
-                avgZ = 0.;
-                avgAccuracy = 0.;
-                lastReading = event.timestamp;
-                aquisitions = 0;
             }
         }
     }
