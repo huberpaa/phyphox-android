@@ -4,6 +4,8 @@ import android.content.Context;
 import android.util.Log;
 import android.widget.Toast;
 
+import com.devsmart.ubjson.UBObject;
+
 import org.eclipse.paho.android.service.MqttAndroidClient;
 import org.eclipse.paho.client.mqttv3.IMqttActionListener;
 import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken;
@@ -34,7 +36,7 @@ public abstract class MqttService extends NetworkService.Service {
     MqttConnectOptions mqttConnectOptions = new MqttConnectOptions();
     MemoryPersistence dataStore;
     int writeSequence = 0;
-    Vector<JSONObject> messageBuffer = new Vector<JSONObject>(600);
+    Vector<UBObject> messageBuffer = new Vector<UBObject>(600);
     boolean clearBuffer, persistence = false;
     Toast toast;
     PhyphoxExperiment experiment;

@@ -3,12 +3,17 @@ package de.rwth_aachen.phyphox.NetworkConnection.Mqtt;
 import android.content.Context;
 import android.util.Log;
 
+import com.devsmart.ubjson.UBObject;
+import com.devsmart.ubjson.UBValueFactory;
+import com.devsmart.ubjson.UBWriter;
+
 import org.eclipse.paho.client.mqttv3.MqttException;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -74,69 +79,8 @@ public class MqttHelper{
         mqttService.clientID = userName;
     }
 
-    private static void writeBufferValuesIntoJson(Map.Entry<String, NetworkConnection.NetworkSendableData> item,
-                                                  JSONObject json)throws JSONException
-    {
-        String datatype = item.getValue().additionalAttributes != null ? item.getValue().additionalAttributes.get("datatype") : null;
-        if (datatype != null && datatype.equals("number")) {
-            double v = item.getValue().buffer.value;
-            if (Double.isNaN(v) || Double.isInfinite(v))
-                json.put(item.getKey(), null);
-            else
-                json.put(item.getKey(), v);
-        } else {
-            JSONArray jsonArray = new JSONArray();
-            for (double v : item.getValue().buffer.getArray()) {
-                if (Double.isNaN(v) || Double.isInfinite(v))
-                    jsonArray.put(null);
-                else
-                    jsonArray.put(v);
-            }
-            json.put(item.getKey(), jsonArray);
-        }
-    }
-
-    private static JSONObject buildJson(Map<String, NetworkConnection.NetworkSendableData> send,
-                                        MqttService mqttService,
-                                        PhyphoxExperiment experiment) throws JSONException{
-
-        JSONObject json = new JSONObject();
-
-            for (Map.Entry<String, NetworkConnection.NetworkSendableData> item : send.entrySet()) {
-                if (item.getValue().type == NetworkConnection.NetworkSendableData.DataType.METADATA)
-                    json.put(item.getKey(), item.getValue().metadata.get(mqttService.address));
-                else if (item.getValue().type == NetworkConnection.NetworkSendableData.DataType.BUFFER) {
-                    if(mqttService.clearBuffer){
-                        experiment.dataLock.lock();
-                        try{
-                            writeBufferValuesIntoJson(item,json);
-                            item.getValue().buffer.clear(false);
-                        } finally {
-                            experiment.dataLock.unlock();
-                        }
-                    }else {
-                        writeBufferValuesIntoJson(item,json);
-                    }
-                } else if (item.getValue().type == NetworkConnection.NetworkSendableData.DataType.TIME) {
-                    JSONObject timeInfo = new JSONObject();
-                    timeInfo.put("now", System.currentTimeMillis() / 1000.0);
-                    JSONArray events = new JSONArray();
-                    for (ExperimentTimeReference.TimeMapping timeMapping : item.getValue().timeReference.timeMappings) {
-                        JSONObject eventJson = new JSONObject();
-                        eventJson.put("event", timeMapping.event.name());
-                        eventJson.put("experimentTime", timeMapping.experimentTime);
-                        eventJson.put("systemTime", timeMapping.systemTime / 1000.);
-                        events.put(eventJson);
-                    }
-                    timeInfo.put("events", events);
-                    json.put(item.getKey(), timeInfo);
-                }
-            }
-        return json;
-    }
-
     private static void sendPersistenceMassages(MqttService mqttService, String sendTopic) throws MqttException{
-        for(JSONObject persistenceMassage : mqttService.messageBuffer){
+        for(UBObject persistenceMassage : mqttService.messageBuffer){
             MqttMessage message = new MqttMessage();
             message.setPayload(persistenceMassage.toString().getBytes());
             message.setQos(2);
@@ -150,7 +94,7 @@ public class MqttHelper{
                                                    MqttService mqttService,
                                                    PhyphoxExperiment experiment) throws JSONException{
         int capacity = mqttService.messageBuffer.capacity();
-        mqttService.messageBuffer.insertElementAt(buildJson(send,mqttService,experiment),(mqttService.writeSequence % capacity));
+        mqttService.messageBuffer.insertElementAt(JsonHelper.buildJson(send,mqttService),(mqttService.writeSequence % capacity));
         mqttService.writeSequence++;
         if(mqttService.writeSequence % capacity == 0) {
             mqttService.writeSequence = 0;
@@ -174,8 +118,7 @@ public class MqttHelper{
             } else if (!mqttService.subscribed && !mqttService.receiveTopic.isEmpty()) {
                 result = new NetworkService.ServiceResult(NetworkService.ResultEnum.genericError, "Not subscribed.");
             } else {
-            JSONObject json = buildJson(send, mqttService, experiment);
-
+            UBObject json = JsonHelper.buildJson(send, mqttService);
             MqttMessage message = new MqttMessage();
             if(mqttService.persistence){
                 sendPersistenceMassages(mqttService,sendTopic);
@@ -183,7 +126,8 @@ public class MqttHelper{
             }else {
                 message.setQos(0);
             }
-            message.setPayload(json.toString().getBytes());
+            byte[] payload = JsonHelper.prepareUBJsonPayload(json);
+            message.setPayload(payload);
             mqttService.client.publish(sendTopic, message);
 
             result = new NetworkService.ServiceResult(NetworkService.ResultEnum.success, "");
