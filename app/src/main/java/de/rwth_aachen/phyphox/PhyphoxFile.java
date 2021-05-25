@@ -37,6 +37,7 @@ import java.lang.ref.WeakReference;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.net.URL;
+import java.time.LocalTime;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -1834,8 +1835,19 @@ public abstract class PhyphoxFile {
                                 String sendTopicStr = getStringAttribute("sendTopic");
                                 String password = getStringAttribute("password");
                                 String userName = getStringAttribute("userName");
+                                String stringStartTime = getStringAttribute("startTime");
+                                String stringEndTime = getStringAttribute("endTime");
                                 boolean persistence = getBooleanAttribute("persistence",false);
+                                LocalTime startTime;
+                                LocalTime endTime;
 
+                                if (stringStartTime == null || stringEndTime == null){
+                                    startTime = LocalTime.MIN;
+                                    endTime = LocalTime.MAX;
+                                }else {
+                                    startTime = LocalTime.parse(stringStartTime);
+                                    endTime = LocalTime.parse(stringEndTime);
+                                }
                                 if (receiveTopicStr == null)
                                     receiveTopicStr = "";
                                 if (sendTopicStr == null || sendTopicStr.isEmpty())
@@ -1844,7 +1856,16 @@ public abstract class PhyphoxFile {
                                     throw new phyphoxFileException("password must be set for the mqtts/json service.", xpp.getLineNumber());
                                 if (userName == null || userName.isEmpty())
                                     throw new phyphoxFileException("userName must be set for the mqtts/json service.", xpp.getLineNumber());
-                                service = new MqttTlsJson(receiveTopicStr,sendTopicStr,userName,password,parent.getApplicationContext(),persistence, clearBuffer, experiment);
+                                service = new MqttTlsJson(receiveTopicStr,
+                                        sendTopicStr,
+                                        userName,
+                                        password,
+                                        parent.getApplicationContext(),
+                                        persistence,
+                                        clearBuffer,
+                                        experiment,
+                                        startTime,
+                                        endTime);
                             }
                             break;
                             case "mqtts/csv" : {
