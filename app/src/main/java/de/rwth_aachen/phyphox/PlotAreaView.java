@@ -353,6 +353,7 @@ class PlotRenderer extends Thread implements TextureView.SurfaceTextureListener 
             "}";
 
     final String gridFragmentShader =
+            "precision mediump float;" +
             "void main () {" +
             "   gl_FragColor = vec4(1.0, 1.0, 1.0, 0.4);" +
             "}";
@@ -369,6 +370,7 @@ class PlotRenderer extends Thread implements TextureView.SurfaceTextureListener 
                     "}";
 
     final String timeRangeFragmentShader =
+            "precision mediump float;" +
             "uniform float alpha;" +
 
             "void main () {" +
@@ -405,6 +407,7 @@ class PlotRenderer extends Thread implements TextureView.SurfaceTextureListener 
             "}";
 
     final String mapFragmentShader =
+            "precision mediump float;" +
             "uniform sampler2D colorMap;" +
             "void main () {" +
             "   gl_FragColor = vec4(texture2D(colorMap, vec2(gl_FragCoord.z,0.0)).rgb, 1.0);" +
@@ -639,6 +642,12 @@ class PlotRenderer extends Thread implements TextureView.SurfaceTextureListener 
         GLES20.glShaderSource(shader, shaderCode);
         GLES20.glCompileShader(shader);
 
+        int[] compiled = new int[1];
+        GLES20.glGetShaderiv(shader, GLES20.GL_COMPILE_STATUS, compiled, 0);
+        if (compiled[0] == 0) {
+            Log.d("PlotRenderer", "Shader error\n" + GLES20.glGetShaderInfoLog(shader));
+            return 0;
+        }
         return shader;
     }
 
@@ -741,7 +750,6 @@ class PlotRenderer extends Thread implements TextureView.SurfaceTextureListener 
     }
 
     public void deinitScene() {
-
     }
 
     private void drawGrid() {
@@ -1002,32 +1010,34 @@ class PlotRenderer extends Thread implements TextureView.SurfaceTextureListener 
                 data.ibo = ref[0];
             }
 
-            if (data.fbY != null) {
-                synchronized (data.fbY.lock) {
-                    if (data.fbX != null) {
-                        synchronized (data.fbX.lock) {
-                            data.n = Math.min(data.fbX.size, data.fbY.size);
+            FloatBufferRepresentation fbX = data.fbX; //Very important: The data might be updated in a parallel process and each Float Buffer representation comes with its own lock. The locking mechanism only makes sense if we use a local pointer that makes sure that we are using the exact FloatBufferRepresantation that has been locked even if the other thread swaps out the entire structure (for example when clear is called on a buffer)
+            FloatBufferRepresentation fbY = data.fbY;
+            if (fbY != null) {
+                synchronized (fbY.lock) {
+                    if (fbX != null) {
+                        synchronized (fbX.lock) {
+                            data.n = Math.min(fbX.size, fbY.size);
                             if (data.n > 0) {
 
                                 GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, data.vboX);
-                                data.fbX.data.position(data.fbX.offset);
-                                GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER, data.n * 4, data.fbX.data, GLES20.GL_DYNAMIC_DRAW);
+                                fbX.data.position(fbX.offset);
+                                GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER, data.n * 4, fbX.data, GLES20.GL_DYNAMIC_DRAW);
 
                                 GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, data.vboY);
-                                data.fbY.data.position(data.fbY.offset);
-                                GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER, data.n * 4, data.fbY.data, GLES20.GL_DYNAMIC_DRAW);
+                                fbY.data.position(fbY.offset);
+                                GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER, data.n * 4, fbY.data, GLES20.GL_DYNAMIC_DRAW);
 
                                 GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
                             }
                         }
                     } else {
-                        data.n = data.fbY.size;
+                        data.n = fbY.size;
 
                         if (data.n > 0) {
 
                             GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, data.vboY);
-                            data.fbY.data.position(data.fbY.offset);
-                            GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER, data.n * 4, data.fbY.data, GLES20.GL_DYNAMIC_DRAW);
+                            fbY.data.position(fbY.offset);
+                            GLES20.glBufferData(GLES20.GL_ARRAY_BUFFER, data.n * 4, fbY.data, GLES20.GL_DYNAMIC_DRAW);
 
                             GLES20.glBindBuffer(GLES20.GL_ARRAY_BUFFER, 0);
                         }

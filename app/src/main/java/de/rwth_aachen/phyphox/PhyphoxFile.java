@@ -66,7 +66,7 @@ import de.rwth_aachen.phyphox.NetworkConnection.NetworkService;
 //of a remote phyphox-file to the local collection. Both are implemented as an AsyncTask
 public abstract class PhyphoxFile {
 
-    public final static String phyphoxFileVersion = "1.12";
+    public final static String phyphoxFileVersion = "1.13";
 
     //translation maps any term for which a suitable translation is found to the current locale or, as fallback, to English
     private static Map<String, String> translation = new HashMap<>();
@@ -1788,7 +1788,6 @@ public abstract class PhyphoxFile {
                     String discoveryAddress = getStringAttribute("discoveryAddress");
                     boolean autoConnect = getBooleanAttribute("autoConnect", false);
                     double interval = getDoubleAttribute("interval", 0.0);
-                    boolean clearBuffer = getBooleanAttribute("clear", false);
 
                     String discoveryStr = getStringAttribute("discovery");
                     NetworkDiscovery.Discovery discovery = null;
@@ -1816,7 +1815,7 @@ public abstract class PhyphoxFile {
                                     String receiveTopicStr = getStringAttribute("receiveTopic");
                                     if (receiveTopicStr == null)
                                         receiveTopicStr = "";
-                                    service = new MqttCsv(receiveTopicStr, parent.getApplicationContext(), clearBuffer,experiment);
+                                    service = new MqttCsv(receiveTopicStr, parent.getApplicationContext());
                                 }
                                 break;
                             case "mqtt/json": {
@@ -1827,16 +1826,18 @@ public abstract class PhyphoxFile {
                                         receiveTopicStr = "";
                                     if (sendTopicStr == null || sendTopicStr.isEmpty())
                                         throw new phyphoxFileException("sendTopic must be set for the mqtt/json service. Use mqtt/csv if you do not intent to send anything.", xpp.getLineNumber());
-                                    service = new MqttJson(receiveTopicStr, sendTopicStr, parent.getApplicationContext(),persistence, clearBuffer, experiment);
+                                    service = new MqttJson(receiveTopicStr, sendTopicStr, parent.getApplicationContext(),persistence);
                                 }
                                 break;
                             case "mqtts/json" : {
                                 String receiveTopicStr = getStringAttribute("receiveTopic");
                                 String sendTopicStr = getStringAttribute("sendTopic");
                                 String password = getStringAttribute("password");
+
                                 String userName = getStringAttribute("userName");
                                 String stringStartTime = getStringAttribute("startTime");
                                 String stringEndTime = getStringAttribute("endTime");
+
                                 boolean persistence = getBooleanAttribute("persistence",false);
                                 LocalTime startTime;
                                 LocalTime endTime;
@@ -1854,6 +1855,7 @@ public abstract class PhyphoxFile {
                                     throw new phyphoxFileException("sendTopic must be set for the mqtts/json service. Use mqtt/csv if you do not intent to send anything.", xpp.getLineNumber());
                                 if (password == null || password.isEmpty())
                                     throw new phyphoxFileException("password must be set for the mqtts/json service.", xpp.getLineNumber());
+
                                 if (userName == null || userName.isEmpty())
                                     throw new phyphoxFileException("userName must be set for the mqtts/json service.", xpp.getLineNumber());
                                 service = new MqttTlsJson(receiveTopicStr,
@@ -1862,8 +1864,6 @@ public abstract class PhyphoxFile {
                                         password,
                                         parent.getApplicationContext(),
                                         persistence,
-                                        clearBuffer,
-                                        experiment,
                                         startTime,
                                         endTime);
                             }
@@ -1871,15 +1871,15 @@ public abstract class PhyphoxFile {
                             case "mqtts/csv" : {
                                 String receiveTopicStr = getStringAttribute("receiveTopic");
                                 String password = getStringAttribute("password");
-                                String userName = getStringAttribute("userName");
+                                String username = getStringAttribute("username");
 
                                 if (receiveTopicStr == null)
                                     receiveTopicStr = "";
                                 if (password == null || password.isEmpty())
                                     throw new phyphoxFileException("password must be set for the mqtts/csv service.", xpp.getLineNumber());
-                                if (userName == null || userName.isEmpty())
-                                    throw new phyphoxFileException("userName must be set for the mqtts/csv service.", xpp.getLineNumber());
-                                service = new MqttTlsCsv(receiveTopicStr,userName,password,parent.getApplicationContext(),clearBuffer, experiment);
+                                if (username == null || username.isEmpty())
+                                    throw new phyphoxFileException("username must be set for the mqtts/csv service.", xpp.getLineNumber());
+                                service = new MqttTlsCsv(receiveTopicStr,username,password,parent.getApplicationContext());
                             }
                             break;
                             default:
@@ -1947,11 +1947,12 @@ public abstract class PhyphoxFile {
 
                     String type = getStringAttribute("type");
                     if (type == null || type.equals("buffer")) {
+                        boolean clear = getBooleanAttribute("clear", false);
                         String bufferName = getText();
                         DataBuffer buffer = experiment.getBuffer(bufferName);
                         if (buffer == null)
                             throw new phyphoxFileException("Buffer \"" + bufferName + "\" not defined.", xpp.getLineNumber());
-                        sendable = new NetworkConnection.NetworkSendableData(buffer);
+                        sendable = new NetworkConnection.NetworkSendableData(buffer, clear);
                         if (datatype != null) {
                             sendable.additionalAttributes = new HashMap<>();
                             sendable.additionalAttributes.put("datatype", datatype);

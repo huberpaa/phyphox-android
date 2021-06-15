@@ -21,8 +21,6 @@ public class MqttTlsJson extends MqttService{
                        String password,
                        Context context,
                        boolean persistence,
-                       boolean clearBuffer,
-                       PhyphoxExperiment experiment,
                        LocalTime startTime,
                        LocalTime endTime) {
 
@@ -31,7 +29,6 @@ public class MqttTlsJson extends MqttService{
         this.context = context;
         this.persistence = persistence;
         this.clearBuffer = clearBuffer;
-        this.experiment = experiment;
 
         this.startTime = startTime;
         this.endTime = endTime;
@@ -48,8 +45,9 @@ public class MqttTlsJson extends MqttService{
 
     @Override
     public void execute(Map<String, NetworkConnection.NetworkSendableData> send, List<NetworkService.RequestCallback> requestCallbacks) {
+
         if(LocalTime.now().isAfter(startTime) && LocalTime.now().isBefore(endTime)) {
-            MqttHelper.sendJson(this, sendTopic, send, requestCallbacks, experiment);
+            MqttHelper.sendJson(this,sendTopic,send,requestCallbacks);
         }
     }
 }
