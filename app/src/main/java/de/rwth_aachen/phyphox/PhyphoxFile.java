@@ -37,6 +37,7 @@ import java.lang.ref.WeakReference;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Method;
 import java.net.URL;
+import java.time.LocalTime;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -1832,18 +1833,39 @@ public abstract class PhyphoxFile {
                                 String receiveTopicStr = getStringAttribute("receiveTopic");
                                 String sendTopicStr = getStringAttribute("sendTopic");
                                 String password = getStringAttribute("password");
-                                String username = getStringAttribute("username");
-                                boolean persistence = getBooleanAttribute("persistence",false);
 
+                                String userName = getStringAttribute("userName");
+                                String stringStartTime = getStringAttribute("startTime");
+                                String stringEndTime = getStringAttribute("endTime");
+
+                                boolean persistence = getBooleanAttribute("persistence",false);
+                                LocalTime startTime;
+                                LocalTime endTime;
+
+                                if (stringStartTime == null || stringEndTime == null){
+                                    startTime = LocalTime.MIN;
+                                    endTime = LocalTime.MAX;
+                                }else {
+                                    startTime = LocalTime.parse(stringStartTime);
+                                    endTime = LocalTime.parse(stringEndTime);
+                                }
                                 if (receiveTopicStr == null)
                                     receiveTopicStr = "";
                                 if (sendTopicStr == null || sendTopicStr.isEmpty())
                                     throw new phyphoxFileException("sendTopic must be set for the mqtts/json service. Use mqtt/csv if you do not intent to send anything.", xpp.getLineNumber());
                                 if (password == null || password.isEmpty())
                                     throw new phyphoxFileException("password must be set for the mqtts/json service.", xpp.getLineNumber());
-                                if (username == null || username.isEmpty())
-                                    throw new phyphoxFileException("username must be set for the mqtts/json service.", xpp.getLineNumber());
-                                service = new MqttTlsJson(receiveTopicStr,sendTopicStr,username,password,parent.getApplicationContext(),persistence);
+
+                                if (userName == null || userName.isEmpty())
+                                    throw new phyphoxFileException("userName must be set for the mqtts/json service.", xpp.getLineNumber());
+                                service = new MqttTlsJson(receiveTopicStr,
+                                        sendTopicStr,
+                                        userName,
+                                        password,
+                                        parent.getApplicationContext(),
+                                        persistence,
+                                        startTime,
+                                        endTime);
                             }
                             break;
                             case "mqtts/csv" : {
