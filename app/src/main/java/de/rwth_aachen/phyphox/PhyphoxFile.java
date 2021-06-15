@@ -52,6 +52,10 @@ import de.rwth_aachen.phyphox.Bluetooth.BluetoothOutput;
 import de.rwth_aachen.phyphox.Bluetooth.ConversionsConfig;
 import de.rwth_aachen.phyphox.Bluetooth.ConversionsInput;
 import de.rwth_aachen.phyphox.Bluetooth.ConversionsOutput;
+import de.rwth_aachen.phyphox.NetworkConnection.Mqtt.MqttCsv;
+import de.rwth_aachen.phyphox.NetworkConnection.Mqtt.MqttJson;
+import de.rwth_aachen.phyphox.NetworkConnection.Mqtt.MqttTlsCsv;
+import de.rwth_aachen.phyphox.NetworkConnection.Mqtt.MqttTlsJson;
 import de.rwth_aachen.phyphox.NetworkConnection.NetworkConnection;
 import de.rwth_aachen.phyphox.NetworkConnection.NetworkConversion;
 import de.rwth_aachen.phyphox.NetworkConnection.NetworkDiscovery;
@@ -61,7 +65,7 @@ import de.rwth_aachen.phyphox.NetworkConnection.NetworkService;
 //of a remote phyphox-file to the local collection. Both are implemented as an AsyncTask
 public abstract class PhyphoxFile {
 
-    public final static String phyphoxFileVersion = "1.12";
+    public final static String phyphoxFileVersion = "1.13";
 
     //translation maps any term for which a suitable translation is found to the current locale or, as fallback, to English
     private static Map<String, String> translation = new HashMap<>();
@@ -1810,19 +1814,52 @@ public abstract class PhyphoxFile {
                                     String receiveTopicStr = getStringAttribute("receiveTopic");
                                     if (receiveTopicStr == null)
                                         receiveTopicStr = "";
-                                    service = new NetworkService.MqttCsv(receiveTopicStr, parent.getApplicationContext());
+                                    service = new MqttCsv(receiveTopicStr, parent.getApplicationContext());
                                 }
                                 break;
                             case "mqtt/json": {
                                     String receiveTopicStr = getStringAttribute("receiveTopic");
                                     String sendTopicStr = getStringAttribute("sendTopic");
+                                    boolean persistence = getBooleanAttribute("persistence",false);
                                     if (receiveTopicStr == null)
                                         receiveTopicStr = "";
                                     if (sendTopicStr == null || sendTopicStr.isEmpty())
                                         throw new phyphoxFileException("sendTopic must be set for the mqtt/json service. Use mqtt/csv if you do not intent to send anything.", xpp.getLineNumber());
-                                    service = new NetworkService.MqttJson(receiveTopicStr, sendTopicStr, parent.getApplicationContext());
+                                    service = new MqttJson(receiveTopicStr, sendTopicStr, parent.getApplicationContext(),persistence);
                                 }
                                 break;
+                            case "mqtts/json" : {
+                                String receiveTopicStr = getStringAttribute("receiveTopic");
+                                String sendTopicStr = getStringAttribute("sendTopic");
+                                String password = getStringAttribute("password");
+                                String username = getStringAttribute("username");
+                                boolean persistence = getBooleanAttribute("persistence",false);
+
+                                if (receiveTopicStr == null)
+                                    receiveTopicStr = "";
+                                if (sendTopicStr == null || sendTopicStr.isEmpty())
+                                    throw new phyphoxFileException("sendTopic must be set for the mqtts/json service. Use mqtt/csv if you do not intent to send anything.", xpp.getLineNumber());
+                                if (password == null || password.isEmpty())
+                                    throw new phyphoxFileException("password must be set for the mqtts/json service.", xpp.getLineNumber());
+                                if (username == null || username.isEmpty())
+                                    throw new phyphoxFileException("username must be set for the mqtts/json service.", xpp.getLineNumber());
+                                service = new MqttTlsJson(receiveTopicStr,sendTopicStr,username,password,parent.getApplicationContext(),persistence);
+                            }
+                            break;
+                            case "mqtts/csv" : {
+                                String receiveTopicStr = getStringAttribute("receiveTopic");
+                                String password = getStringAttribute("password");
+                                String username = getStringAttribute("username");
+
+                                if (receiveTopicStr == null)
+                                    receiveTopicStr = "";
+                                if (password == null || password.isEmpty())
+                                    throw new phyphoxFileException("password must be set for the mqtts/csv service.", xpp.getLineNumber());
+                                if (username == null || username.isEmpty())
+                                    throw new phyphoxFileException("username must be set for the mqtts/csv service.", xpp.getLineNumber());
+                                service = new MqttTlsCsv(receiveTopicStr,username,password,parent.getApplicationContext());
+                            }
+                            break;
                             default:
                                 throw new phyphoxFileException("Unknown service "+serviceStr, xpp.getLineNumber());
                         }
@@ -1888,11 +1925,12 @@ public abstract class PhyphoxFile {
 
                     String type = getStringAttribute("type");
                     if (type == null || type.equals("buffer")) {
+                        boolean clear = getBooleanAttribute("clear", false);
                         String bufferName = getText();
                         DataBuffer buffer = experiment.getBuffer(bufferName);
                         if (buffer == null)
                             throw new phyphoxFileException("Buffer \"" + bufferName + "\" not defined.", xpp.getLineNumber());
-                        sendable = new NetworkConnection.NetworkSendableData(buffer);
+                        sendable = new NetworkConnection.NetworkSendableData(buffer, clear);
                         if (datatype != null) {
                             sendable.additionalAttributes = new HashMap<>();
                             sendable.additionalAttributes.put("datatype", datatype);

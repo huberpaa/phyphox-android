@@ -1,5 +1,6 @@
 package de.rwth_aachen.phyphox;
 
+import android.annotation.SuppressLint;
 import android.app.Activity;
 import android.app.ProgressDialog;
 import android.content.ComponentName;
@@ -13,6 +14,10 @@ import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.ColorFilter;
+import android.graphics.PorterDuff;
+import android.graphics.PorterDuffColorFilter;
+import android.graphics.drawable.Drawable;
 import android.hardware.Sensor;
 import android.hardware.SensorManager;
 import android.location.LocationManager;
@@ -22,6 +27,7 @@ import android.os.Bundle;
 import android.os.CountDownTimer;
 import android.os.Handler;
 import android.util.Log;
+import android.util.MutableBoolean;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.LayoutInflater;
@@ -35,6 +41,7 @@ import android.view.animation.Animation;
 import android.view.animation.AnimationUtils;
 import android.widget.Button;
 import android.widget.CheckBox;
+import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
@@ -42,6 +49,7 @@ import android.widget.PopupWindow;
 import android.widget.ProgressBar;
 import android.widget.RelativeLayout;
 import android.widget.ScrollView;
+import android.widget.TableLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -49,11 +57,13 @@ import androidx.annotation.NonNull;
 import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.appcompat.widget.SwitchCompat;
 import androidx.appcompat.widget.Toolbar;
 import androidx.core.app.NavUtils;
 import androidx.core.app.ShareCompat;
 import androidx.core.app.TaskStackBuilder;
 import androidx.core.content.FileProvider;
+import androidx.core.widget.CompoundButtonCompat;
 import androidx.core.widget.TextViewCompat;
 import androidx.fragment.app.FragmentManager;
 import androidx.viewpager.widget.ViewPager;
@@ -68,6 +78,7 @@ import java.util.Calendar;
 import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.Vector;
@@ -89,6 +100,10 @@ public class Experiment extends AppCompatActivity implements View.OnClickListene
     private static final String STATE_TIMED_RUN = "timed_run"; //Are timed runs activated?
     private static final String STATE_TIMED_RUN_START_DELAY = "timed_run_start_delay"; //The start delay for a timed run
     private static final String STATE_TIMED_RUN_STOP_DELAY = "timed_run_stop_delay"; //The stop delay for a timed run
+    private static final String STATE_TIMED_RUN_BEEP_COUNTDOWN = "timed_run_beep_countdown";
+    private static final String STATE_TIMED_RUN_BEEP_START = "timed_run_beep_start";
+    private static final String STATE_TIMED_RUN_BEEP_RUNNING = "timed_run_beep_running";
+    private static final String STATE_TIMED_RUN_BEEP_STOP = "timed_run_beep_stop";
     private static final String STATE_MENU_HINT_DISMISSED = "menu_hint_dismissed";
     private static final String STATE_START_HINT_DISMISSED = "start_hint_dismissed";
     private static final String STATE_SAVE_LOCALLY_DISMISSED = "save_locally_dismissed";
@@ -119,6 +134,10 @@ public class Experiment extends AppCompatActivity implements View.OnClickListene
     boolean timedRun = false; //Timed run enabled?
     double timedRunStartDelay = 3.; //Start delay for timed runs
     double timedRunStopDelay = 10.; //Stop delay for timed runs
+    boolean timedRunBeepCountdown = false;
+    boolean timedRunBeepStart = false;
+    boolean timedRunBeepRunning = false;
+    boolean timedRunBeepStop = false;
     CountDownTimer cdTimer = null; //This holds the timer used for timed runs. If it is not null, a timed run is running and at the end of the countdown the measurement state will change
     long millisUntilFinished = 0; //This variable is used to cache the remaining countdown, so it is available outside the onTick-callback of the timer
 
@@ -143,6 +162,7 @@ public class Experiment extends AppCompatActivity implements View.OnClickListene
     float analysisProgressAlpha = 0.f;  //Will be increased while analysis is running and decreased while idle. This smoothes the display and results in an everage transparency representing the average load.
 
     PopupWindow popupWindow = null;
+    AudioOutput audioOutput = null;
 
     private void doLeaveExperiment(Activity activity) {
         Intent upIntent = NavUtils.getParentActivityIntent(activity);
@@ -296,6 +316,7 @@ public class Experiment extends AppCompatActivity implements View.OnClickListene
     //If a new permission has been granted, we will just restart the activity to reload the experiment
     //   with the formerly missing permission
     public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
             this.recreate();
         }
@@ -372,6 +393,10 @@ public class Experiment extends AppCompatActivity implements View.OnClickListene
                 timedRun = savedInstanceState.getBoolean(STATE_TIMED_RUN, false); //timed run activated?
                 timedRunStartDelay = savedInstanceState.getDouble(STATE_TIMED_RUN_START_DELAY); //start elay of timed run
                 timedRunStopDelay = savedInstanceState.getDouble(STATE_TIMED_RUN_STOP_DELAY); //stop delay of timed run
+                timedRunBeepCountdown = savedInstanceState.getBoolean(STATE_TIMED_RUN_BEEP_COUNTDOWN);
+                timedRunBeepStart = savedInstanceState.getBoolean(STATE_TIMED_RUN_BEEP_START);
+                timedRunBeepRunning = savedInstanceState.getBoolean(STATE_TIMED_RUN_BEEP_RUNNING);
+                timedRunBeepStop = savedInstanceState.getBoolean(STATE_TIMED_RUN_BEEP_STOP);
                 menuHintDismissed = savedInstanceState.getBoolean(STATE_MENU_HINT_DISMISSED);
                 startHintDismissed = savedInstanceState.getBoolean(STATE_START_HINT_DISMISSED);
                 saveLocallyDismissed = savedInstanceState.getBoolean(STATE_SAVE_LOCALLY_DISMISSED);
@@ -583,6 +608,7 @@ public class Experiment extends AppCompatActivity implements View.OnClickListene
         }
     }
 
+    @SuppressLint("ClickableViewAccessibility")
     private void showHint(int textRessource, PopupWindow.OnDismissListener dismissListener, final int gravity, final int fromRight) {
         if (popupWindow != null)
             return;
@@ -601,9 +627,9 @@ public class Experiment extends AppCompatActivity implements View.OnClickListene
             popupWindow.setElevation(4.0f);
         }
 
-        popupWindow.setOutsideTouchable(true);
-        popupWindow.setTouchable(true);
-        popupWindow.setFocusable(true);
+        popupWindow.setOutsideTouchable(false);
+        popupWindow.setTouchable(false);
+        popupWindow.setFocusable(false);
         LinearLayout ll = (LinearLayout) hintView.findViewById(R.id.hint_root);
 
         ll.setOnTouchListener(new View.OnTouchListener() {
@@ -635,6 +661,12 @@ public class Experiment extends AppCompatActivity implements View.OnClickListene
                 }
             }
         });
+    }
+
+    @Override
+    public void onUserInteraction() {
+        if (popupWindow != null)
+            popupWindow.dismiss();
     }
 
     private void showMenuHint() {
@@ -800,18 +832,21 @@ public class Experiment extends AppCompatActivity implements View.OnClickListene
         //If the timedRun is active, we have to set the value of the countdown
         if (timedRun) {
             if (cdTimer != null) { //Timer running? Show the last known value of millisUntilFinished
-                timer.setTitle(String.valueOf(millisUntilFinished / 1000 + 1) + "s");
+                timer.setTitle(String.format(Locale.US, "%.1f", millisUntilFinished / 1000.0));
             } else { //No timer running? Show the start value of the next timer, which is...
                 if (measuring) //...the stop delay if we are already measuring
-                    timer.setTitle(String.valueOf(Math.round(timedRunStopDelay))+"s");
+                    timer.setTitle(String.format(Locale.US, "%.1f", timedRunStopDelay));
                 else //...the start delay if we are paused
-                    timer.setTitle(String.valueOf(Math.round(timedRunStartDelay))+"s");
+                    timer.setTitle(String.format(Locale.US, "%.1f", timedRunStartDelay));
             }
         }
         return true;
     }
 
+    @Override
     public void onClick(View v) {
+        if (popupWindow != null)
+            popupWindow.dismiss();
         if (v == hintAnimation) {
             if (timedRun) {
                 startTimedMeasurement();
@@ -903,12 +938,87 @@ public class Experiment extends AppCompatActivity implements View.OnClickListene
             LayoutInflater inflater = (LayoutInflater) this.getSystemService(LAYOUT_INFLATER_SERVICE);
             View vLayout = inflater.inflate(R.layout.timed_run_layout, null);
             AlertDialog.Builder builder = new AlertDialog.Builder(this);
+
             final CheckBox cbTimedRunEnabled = (CheckBox) vLayout.findViewById(R.id.timedRunEnabled);
+            final TableLayout tTimedRunTimeOptions = (TableLayout) vLayout.findViewById(R.id.timedRunTimeOptions);
+            final RelativeLayout tTimedRunBeeperAllRow = (RelativeLayout) vLayout.findViewById(R.id.timedRunBeepAllRow);
+            final TableLayout tTimedRunBeeperOptions = (TableLayout) vLayout.findViewById(R.id.timedRunBeepOptions);
             cbTimedRunEnabled.setChecked(timedRun);
+
+            final CompoundButton.OnCheckedChangeListener enabledChanged = new CompoundButton.OnCheckedChangeListener() {
+                  @Override
+                  public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                      tTimedRunTimeOptions.setVisibility(isChecked ? View.VISIBLE : View.GONE);
+                      tTimedRunBeeperAllRow.setVisibility(isChecked ? View.VISIBLE : View.GONE);
+                      tTimedRunBeeperOptions.setVisibility(isChecked ? View.VISIBLE : View.GONE);
+                  }
+
+            };
+
+            cbTimedRunEnabled.setOnCheckedChangeListener(enabledChanged);
+            enabledChanged.onCheckedChanged(cbTimedRunEnabled, timedRun);
+
             final EditText etTimedRunStartDelay = (EditText) vLayout.findViewById(R.id.timedRunStartDelay);
             etTimedRunStartDelay.setText(String.valueOf(timedRunStartDelay));
             final EditText etTimedRunStopDelay = (EditText) vLayout.findViewById(R.id.timedRunStopDelay);
             etTimedRunStopDelay.setText(String.valueOf(timedRunStopDelay));
+
+            final class IgnoreChanges {
+                boolean ignore = true;
+            }
+            final IgnoreChanges ignoreChanges = new IgnoreChanges();
+            final Button cbTimedRunBeeperAll = (Button) vLayout.findViewById(R.id.timedRunBeepAll);
+            final class AllButtonOn {
+                boolean on = false;
+            }
+            final AllButtonOn allButtonOn = new AllButtonOn();
+            final SwitchCompat cbTimedRunBeeperCountdown = (SwitchCompat) vLayout.findViewById(R.id.timedRunBeepCountdown);
+            final SwitchCompat cbTimedRunBeeperStart = (SwitchCompat) vLayout.findViewById(R.id.timedRunBeepStart);
+            final SwitchCompat cbTimedRunBeeperRunning = (SwitchCompat) vLayout.findViewById(R.id.timedRunBeepRunning);
+            final SwitchCompat cbTimedRunBeeperStop = (SwitchCompat) vLayout.findViewById(R.id.timedRunBeepStop);
+
+            final View.OnClickListener allButtonClicked;
+
+            final CompoundButton.OnCheckedChangeListener updateAllButton = new CompoundButton.OnCheckedChangeListener() {
+                @Override
+                public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                    if (ignoreChanges.ignore)
+                        return;
+
+                    allButtonOn.on = (cbTimedRunBeeperCountdown.isChecked() || cbTimedRunBeeperStart.isChecked() || cbTimedRunBeeperRunning.isChecked() || cbTimedRunBeeperStop.isChecked());
+                    cbTimedRunBeeperAll.setText(allButtonOn.on ? R.string.deactivate_all : R.string.activate_all);
+                }
+            };
+
+            allButtonClicked = new View.OnClickListener() {
+                @Override
+                public void onClick(View view) {
+                    ignoreChanges.ignore = true;
+
+                    allButtonOn.on = !allButtonOn.on;
+                    cbTimedRunBeeperAll.setText(allButtonOn.on ? R.string.deactivate_all : R.string.activate_all);
+                    cbTimedRunBeeperCountdown.setChecked(allButtonOn.on);
+                    cbTimedRunBeeperStart.setChecked(allButtonOn.on);
+                    cbTimedRunBeeperRunning.setChecked(allButtonOn.on);
+                    cbTimedRunBeeperStop.setChecked(allButtonOn.on);
+
+                    ignoreChanges.ignore = false;
+                }
+            };
+
+            cbTimedRunBeeperAll.setOnClickListener(allButtonClicked);
+            cbTimedRunBeeperCountdown.setOnCheckedChangeListener(updateAllButton);
+            cbTimedRunBeeperStart.setOnCheckedChangeListener(updateAllButton);
+            cbTimedRunBeeperRunning.setOnCheckedChangeListener(updateAllButton);
+            cbTimedRunBeeperStop.setOnCheckedChangeListener(updateAllButton);
+
+            cbTimedRunBeeperCountdown.setChecked(timedRunBeepCountdown);
+            cbTimedRunBeeperStart.setChecked(timedRunBeepStart);
+            cbTimedRunBeeperRunning.setChecked(timedRunBeepRunning);
+            cbTimedRunBeeperStop.setChecked(timedRunBeepStop);
+            ignoreChanges.ignore = false;
+            updateAllButton.onCheckedChanged(cbTimedRunBeeperStop, timedRunBeepStop);
+
             builder.setView(vLayout)
                     .setTitle(R.string.timedRunDialogTitle)
                     .setPositiveButton(R.string.ok, new DialogInterface.OnClickListener() {
@@ -929,6 +1039,11 @@ public class Experiment extends AppCompatActivity implements View.OnClickListene
                             } catch (Exception e) {
                                 timedRunStopDelay = 0.;
                             }
+
+                            timedRunBeepCountdown = cbTimedRunBeeperCountdown.isChecked();
+                            timedRunBeepStart = cbTimedRunBeeperStart.isChecked();
+                            timedRunBeepRunning = cbTimedRunBeeperRunning.isChecked();
+                            timedRunBeepStop = cbTimedRunBeeperStop.isChecked();
 
                             if (timedRun && measuring)
                                 stopMeasurement();
@@ -1257,7 +1372,7 @@ public class Experiment extends AppCompatActivity implements View.OnClickListene
                         }
                     }
                 });
-                btn.setBackgroundResource(R.drawable.background_ripple);
+                btn.setBackgroundResource(R.drawable.background_ripple2);
                 ll.addView(btn);
             }
 
@@ -1459,11 +1574,37 @@ public class Experiment extends AppCompatActivity implements View.OnClickListene
 
         //If this is a timed run, we have to start the countdown which stops it again later.
         if (timedRun) {
+
             millisUntilFinished = Math.round(timedRunStopDelay * 1000);
-            cdTimer = new CountDownTimer(millisUntilFinished, 100) {
+            cdTimer = new CountDownTimer(millisUntilFinished, 20) {
+
+                int nextBeep = -1;
+                boolean relative = false;
 
                 public void onTick(long muf) {
                     //On each tick update the menu to show the remaining time
+                    if (timedRunBeepRunning || timedRunBeepStop) {
+                        if (nextBeep < 0)
+                            nextBeep = (int)(Math.floor(muf/1000. - 0.6));
+                        if (muf/1000. < nextBeep + 0.4) {
+                            if (nextBeep == 0 && timedRunBeepStop) {
+                                if (relative)
+                                    audioOutput.beepRelative(800, 0.5, 1.0);
+                                else {
+                                    audioOutput.beep(800, 0.5, muf / 1000. - nextBeep);
+                                    relative = true;
+                                }
+                            } else if (nextBeep > 0 && timedRunBeepRunning) {
+                                if (relative)
+                                    audioOutput.beepRelative(1000, 0.1, 1.0);
+                                else {
+                                    audioOutput.beep(1000, 0.1, muf / 1000. - nextBeep);
+                                    relative = true;
+                                }
+                            }
+                            nextBeep--;
+                        }
+                    }
                     millisUntilFinished = muf;
                     invalidateOptionsMenu();
                 }
@@ -1514,12 +1655,52 @@ public class Experiment extends AppCompatActivity implements View.OnClickListene
             }
         }
 
+        if (timedRunBeepCountdown || timedRunBeepStart || timedRunBeepRunning || timedRunBeepStop) {
+            if (experiment.audioOutput == null) {
+                if (audioOutput == null) {
+                    audioOutput = new AudioOutput(false, 48000, true);
+                    try {
+                        audioOutput.init();
+                    } catch (Exception e) {
+                        return;
+                    }
+                }
+            } else
+                audioOutput = experiment.audioOutput;
+            audioOutput.start(true);
+            audioOutput.play();
+        }
+
         //Not much more to do here. Just set up a countdown that will start the measurement
         millisUntilFinished = Math.round(timedRunStartDelay*1000);
-        cdTimer = new CountDownTimer(millisUntilFinished, 100) {
+        cdTimer = new CountDownTimer(millisUntilFinished, 20) {
+            int nextBeep = -1;
+            boolean relative = false;
 
             public void onTick(long muf) {
                 //On each tick update the menu to show the remaining time
+                if (timedRunBeepCountdown || timedRunBeepStart) {
+                    if (nextBeep < 0)
+                        nextBeep = (int)(Math.floor(muf/1000. - 0.5));
+                    if (muf/1000. < nextBeep + 0.4) {
+                        if (nextBeep == 0 && timedRunBeepStart) {
+                            if (relative)
+                                audioOutput.beepRelative(1000, 0.5, 1.0);
+                            else {
+                                audioOutput.beep(1000, 0.5, muf / 1000. - nextBeep);
+                                relative = true;
+                            }
+                        } else if (nextBeep > 0 && timedRunBeepCountdown) {
+                            if (relative)
+                                audioOutput.beepRelative(800, 0.1, 1.0);
+                            else {
+                                audioOutput.beep(800, 0.1, muf / 1000. - nextBeep);
+                                relative = true;
+                            }
+                        }
+                        nextBeep--;
+                    }
+                }
                 millisUntilFinished = muf;
                 invalidateOptionsMenu();
             }
@@ -1695,6 +1876,10 @@ public class Experiment extends AppCompatActivity implements View.OnClickListene
             outState.putBoolean(STATE_TIMED_RUN, timedRun); //timed run status
             outState.putDouble(STATE_TIMED_RUN_START_DELAY, timedRunStartDelay); //timed run start delay
             outState.putDouble(STATE_TIMED_RUN_STOP_DELAY, timedRunStopDelay); //timed run stop delay
+            outState.putBoolean(STATE_TIMED_RUN_BEEP_COUNTDOWN, timedRunBeepCountdown);
+            outState.putBoolean(STATE_TIMED_RUN_BEEP_START, timedRunBeepStart);
+            outState.putBoolean(STATE_TIMED_RUN_BEEP_RUNNING, timedRunBeepRunning);
+            outState.putBoolean(STATE_TIMED_RUN_BEEP_STOP, timedRunBeepStop);
             outState.putBoolean(STATE_MENU_HINT_DISMISSED, menuHintDismissed);
             outState.putBoolean(STATE_START_HINT_DISMISSED, startHintDismissed);
             outState.putBoolean(STATE_SAVE_LOCALLY_DISMISSED, saveLocallyDismissed);
